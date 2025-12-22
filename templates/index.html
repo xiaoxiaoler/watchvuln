@@ -1,0 +1,276 @@
+<!doctype html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>漏洞情报狩猎 本地漏洞列表</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>漏洞情报狩猎 本地漏洞列表</h1>
+      <div class="meta">
+        API: <a href="/api/vulns" target="_blank">/api/vulns</a>
+      </div>
+    </div>
+    
+    <div class="search-container">
+      <div class="search-box">
+        <input type="text" id="searchInput" placeholder="搜索漏洞标题或CVE编号...">
+        <button onclick="performSearch()">搜索</button>
+      </div>
+      
+      <div class="filters-container">
+        <div class="filter-group">
+          <label>披露时间:</label>
+          <input type="date" id="disclosureStart" placeholder="开始日期">
+          <span>至</span>
+          <input type="date" id="disclosureEnd" placeholder="结束日期">
+        </div>
+        
+        <div class="filter-group">
+          <label>更新时间:</label>
+          <input type="date" id="updateStart" placeholder="开始日期">
+          <span>至</span>
+          <input type="date" id="updateEnd" placeholder="结束日期">
+        </div>
+        
+        <div class="filter-group">
+        <label>已推送:</label>
+        <select id="pushedFilter">
+          <option value="">全部</option>
+          <option value="true">是</option>
+          <option value="false">否</option>
+        </select>
+      </div>
+      
+      <div class="filter-group severity-filter">
+        <label>严重性:</label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="severity" value="严重" checked>
+          <span>严重</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="severity" value="高危" checked>
+          <span>高危</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="severity" value="中危" checked>
+          <span>中危</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" name="severity" value="低危" checked>
+          <span>低危</span>
+        </label>
+      </div>
+        
+        <button class="filter-btn" onclick="performSearch()">应用筛选</button>
+        <button class="filter-btn clear" onclick="clearFilters()">清除筛选</button>
+      </div>
+    </div>
+    
+    <div class="stats">
+      <span id="totalCount">共 {{len .}} 条</span>
+      <span id="displayCount" style="margin-left: 15px;">显示 {{len .}} 条</span>
+    </div>
+    
+    <div class="table-container">
+      <table id="vulnTable">
+        <thead>
+          <tr>
+            <th>标题</th>
+            <th>严重性</th>
+            <th>CVE</th>
+            <th>披露日期</th>
+            <th>来源</th>
+            <th>标签</th>
+            <th>已推送</th>
+            <th>更新时间</th>
+          </tr>
+        </thead>
+        <tbody>
+        {{range .}}
+          <tr>
+            <td class="title-cell">
+              <div><strong>{{.Title}}</strong></div>
+              <div class="from"><a href="{{.From}}" target="_blank">{{.From}}</a></div>
+            </td>
+            <td class="severity-{{.Severity}}">{{.Severity}}</td>
+            <td class="cve-cell">{{.Cve}}</td>
+            <td class="date-cell">{{.Disclosure}}</td>
+            <td>{{.Key}}</td>
+            <td>{{range .Tags}}<span class="tag">{{.}}</span>{{end}}</td>
+            <td class="{{if .Pushed}}pushed-yes{{else}}pushed-no{{end}}">{{if .Pushed}}是{{else}}否{{end}}</td>
+            <td class="date-cell">{{.UpdateTime.Format "2006-01-02 15:04:05"}}</td>
+          </tr>
+        {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  
+  <script>
+    // 列宽拉拽功能
+    function initColumnResizing() {
+      const table = document.getElementById('vulnTable');
+      const headers = table.querySelectorAll('th');
+      
+      headers.forEach((header, index) => {
+        let isResizing = false;
+        let startX;
+        let startWidth;
+        
+        header.addEventListener('mousedown', (e) => {
+          // 只在点击列边界时触发拉拽
+          if (e.offsetX > header.offsetWidth - 10) {
+            isResizing = true;
+            startX = e.clientX;
+            startWidth = header.offsetWidth;
+            document.body.classList.add('resizing');
+            e.preventDefault();
+          }
+        });
+        
+        document.addEventListener('mousemove', (e) => {
+          if (!isResizing) return;
+          
+          const deltaX = e.clientX - startX;
+          const newWidth = startWidth + deltaX;
+          
+          // 设置最小宽度
+          if (newWidth < 100) return;
+          
+          // 更新表头宽度
+          header.style.width = newWidth + 'px';
+          
+          // 更新所有行的对应列宽度
+          const rows = table.querySelectorAll('tr');
+          rows.forEach(row => {
+            const cell = row.cells[index];
+            if (cell) {
+              cell.style.width = newWidth + 'px';
+            }
+          });
+        });
+        
+        document.addEventListener('mouseup', () => {
+          isResizing = false;
+          document.body.classList.remove('resizing');
+        });
+      });
+    }
+    
+    function performSearch() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
+      const disclosureStart = document.getElementById('disclosureStart').value;
+      const disclosureEnd = document.getElementById('disclosureEnd').value;
+      const updateStart = document.getElementById('updateStart').value;
+      const updateEnd = document.getElementById('updateEnd').value;
+      const pushedFilter = document.getElementById('pushedFilter').value;
+      
+      // 获取选中的严重性
+      const severityCheckboxes = document.querySelectorAll('input[name="severity"]:checked');
+      const selectedSeverities = Array.from(severityCheckboxes).map(cb => cb.value);
+      
+      const table = document.getElementById('vulnTable');
+      const tbody = table.getElementsByTagName('tbody')[0];
+      const rows = tbody.getElementsByTagName('tr');
+      let visibleCount = 0;
+      
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const titleCell = row.getElementsByClassName('title-cell')[0];
+        const cveCell = row.getElementsByClassName('cve-cell')[0];
+        const severityCell = row.cells[1]; // 严重性列
+        const disclosureCell = row.cells[3]; // 披露日期列
+        const updateCell = row.cells[7]; // 更新时间列
+        const pushedCell = row.cells[6]; // 已推送列
+        
+        const title = titleCell.getElementsByTagName('strong')[0].textContent.toLowerCase();
+        const cve = cveCell.textContent.toLowerCase();
+        const severity = severityCell.textContent;
+        const disclosureDate = disclosureCell.textContent;
+        const updateDate = updateCell.textContent;
+        const pushedStatus = pushedCell.textContent;
+        
+        // 搜索条件
+        const matchesSearch = searchTerm === '' || title.includes(searchTerm) || cve.includes(searchTerm);
+        
+        // 披露时间条件
+        let matchesDisclosure = true;
+        if (disclosureStart !== '') {
+          matchesDisclosure = disclosureDate >= disclosureStart;
+        }
+        if (disclosureEnd !== '') {
+          matchesDisclosure = matchesDisclosure && disclosureDate <= disclosureEnd;
+        }
+        
+        // 更新时间条件
+        let matchesUpdate = true;
+        if (updateStart !== '') {
+          const rowUpdateDate = new Date(updateDate);
+          const filterUpdateStart = new Date(updateStart);
+          matchesUpdate = rowUpdateDate >= filterUpdateStart;
+        }
+        if (updateEnd !== '') {
+          const rowUpdateDate = new Date(updateDate);
+          const filterUpdateEnd = new Date(updateEnd);
+          // 设置为当天结束时间
+          filterUpdateEnd.setHours(23, 59, 59, 999);
+          matchesUpdate = matchesUpdate && rowUpdateDate <= filterUpdateEnd;
+        }
+        
+        // 推送状态条件
+        let matchesPushed = true;
+        if (pushedFilter !== '') {
+          const expectedStatus = pushedFilter === 'true' ? '是' : '否';
+          matchesPushed = pushedStatus === expectedStatus;
+        }
+        
+        // 严重性条件
+        const matchesSeverity = selectedSeverities.includes(severity);
+        
+        // 综合所有条件
+        if (matchesSearch && matchesDisclosure && matchesUpdate && matchesPushed && matchesSeverity) {
+          row.style.display = '';
+          visibleCount++;
+        } else {
+          row.style.display = 'none';
+        }
+      }
+      
+      // 更新统计信息
+      document.getElementById('displayCount').textContent = '显示 ' + visibleCount + ' 条';
+    }
+    
+    function clearFilters() {
+      document.getElementById('searchInput').value = '';
+      document.getElementById('disclosureStart').value = '';
+      document.getElementById('disclosureEnd').value = '';
+      document.getElementById('updateStart').value = '';
+      document.getElementById('updateEnd').value = '';
+      document.getElementById('pushedFilter').value = '';
+      
+      // 重置所有严重性复选框为选中状态
+      const severityCheckboxes = document.querySelectorAll('input[name="severity"]');
+      severityCheckboxes.forEach(cb => cb.checked = true);
+      
+      performSearch();
+    }
+    
+    // 监听回车键
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        performSearch();
+      }
+    });
+    
+    // 页面加载时应用筛选和初始化列宽拉拽
+    window.addEventListener('load', function() {
+      performSearch();
+      initColumnResizing();
+    });
+  </script>
+</body>
+</html>
