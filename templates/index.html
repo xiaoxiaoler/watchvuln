@@ -71,8 +71,9 @@
     </div>
     
     <div class="stats">
-      <span id="totalCount">共 {{len .}} 条</span>
-      <span id="displayCount" style="margin-left: 15px;">显示 {{len .}} 条</span>
+      <span id="totalCount">共 {{.total}} 条</span>
+      <span id="displayCount" style="margin-left: 15px;">显示 {{len .vulns}} 条</span>
+      <span style="margin-left: 15px;">第 {{.page}} / {{.totalPages}} 页</span>
     </div>
     
     <div class="table-container">
@@ -90,7 +91,7 @@
           </tr>
         </thead>
         <tbody>
-        {{range .}}
+        {{range .vulns}}
           <tr>
             <td class="title-cell">
               <div><strong>{{.Title}}</strong></div>
@@ -107,6 +108,67 @@
         {{end}}
         </tbody>
       </table>
+    </div>
+    
+    <div class="pagination-container">
+      <div class="pagination">
+        <button 
+          onclick="changePage(1)" 
+          {{if eq .page 1}}disabled{{end}}
+          class="page-btn"
+        >
+          首页
+        </button>
+        <button 
+          onclick="changePageToPrevious()" 
+          {{if eq .page 1}}disabled{{end}}
+          class="page-btn"
+        >
+          上一页
+        </button>
+        
+        <div class="page-input-group">
+          <span>第</span>
+          <input 
+            type="number" 
+            id="currentPageInput" 
+            value="{{.page}}" 
+            min="1" 
+            max="{{.totalPages}}" 
+            onkeypress="if(event.key==='Enter') { goToPage() }"
+          >
+          <span>页 / 共 {{.totalPages}} 页</span>
+        </div>
+        
+        <button 
+          onclick="changePageToNext()" 
+          {{if eq .page .totalPages}}disabled{{end}}
+          class="page-btn"
+        >
+          下一页
+        </button>
+        <button 
+          onclick="changePage({{.totalPages}})" 
+          {{if eq .page .totalPages}}disabled{{end}}
+          class="page-btn"
+        >
+          末页
+        </button>
+        
+        <div class="page-size-selector">
+          <span>每页显示</span>
+          <select 
+            id="pageSizeSelect" 
+            onchange="changePageSize()"
+          >
+            <option {{if eq .pageSize 10}}selected{{end}} value="10">10</option>
+            <option {{if eq .pageSize 20}}selected{{end}} value="20">20</option>
+            <option {{if eq .pageSize 50}}selected{{end}} value="50">50</option>
+            <option {{if eq .pageSize 100}}selected{{end}} value="100">100</option>
+          </select>
+          <span>条</span>
+        </div>
+      </div>
     </div>
   </div>
   
@@ -161,87 +223,126 @@
       });
     }
     
-    function performSearch() {
-      const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
-      const disclosureStart = document.getElementById('disclosureStart').value;
-      const disclosureEnd = document.getElementById('disclosureEnd').value;
-      const updateStart = document.getElementById('updateStart').value;
-      const updateEnd = document.getElementById('updateEnd').value;
-      const pushedFilter = document.getElementById('pushedFilter').value;
+    // 获取当前URL参数
+    function getURLParams() {
+      const params = new URLSearchParams(window.location.search);
+      return params;
+    }
+    
+    // 构建带参数的URL
+    function buildURL(page, pageSize) {
+      const params = getURLParams();
       
-      // 获取选中的严重性
-      const severityCheckboxes = document.querySelectorAll('input[name="severity"]:checked');
-      const selectedSeverities = Array.from(severityCheckboxes).map(cb => cb.value);
+      // 设置分页参数
+      params.set('page', page);
+      params.set('pageSize', pageSize);
       
-      const table = document.getElementById('vulnTable');
-      const tbody = table.getElementsByTagName('tbody')[0];
-      const rows = tbody.getElementsByTagName('tr');
-      let visibleCount = 0;
-      
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const titleCell = row.getElementsByClassName('title-cell')[0];
-        const cveCell = row.getElementsByClassName('cve-cell')[0];
-        const severityCell = row.cells[1]; // 严重性列
-        const disclosureCell = row.cells[3]; // 披露日期列
-        const updateCell = row.cells[7]; // 更新时间列
-        const pushedCell = row.cells[6]; // 已推送列
-        
-        const title = titleCell.getElementsByTagName('strong')[0].textContent.toLowerCase();
-        const cve = cveCell.textContent.toLowerCase();
-        const severity = severityCell.textContent;
-        const disclosureDate = disclosureCell.textContent;
-        const updateDate = updateCell.textContent;
-        const pushedStatus = pushedCell.textContent;
-        
-        // 搜索条件
-        const matchesSearch = searchTerm === '' || title.includes(searchTerm) || cve.includes(searchTerm);
-        
-        // 披露时间条件
-        let matchesDisclosure = true;
-        if (disclosureStart !== '') {
-          matchesDisclosure = disclosureDate >= disclosureStart;
-        }
-        if (disclosureEnd !== '') {
-          matchesDisclosure = matchesDisclosure && disclosureDate <= disclosureEnd;
-        }
-        
-        // 更新时间条件
-        let matchesUpdate = true;
-        if (updateStart !== '') {
-          const rowUpdateDate = new Date(updateDate);
-          const filterUpdateStart = new Date(updateStart);
-          matchesUpdate = rowUpdateDate >= filterUpdateStart;
-        }
-        if (updateEnd !== '') {
-          const rowUpdateDate = new Date(updateDate);
-          const filterUpdateEnd = new Date(updateEnd);
-          // 设置为当天结束时间
-          filterUpdateEnd.setHours(23, 59, 59, 999);
-          matchesUpdate = matchesUpdate && rowUpdateDate <= filterUpdateEnd;
-        }
-        
-        // 推送状态条件
-        let matchesPushed = true;
-        if (pushedFilter !== '') {
-          const expectedStatus = pushedFilter === 'true' ? '是' : '否';
-          matchesPushed = pushedStatus === expectedStatus;
-        }
-        
-        // 严重性条件
-        const matchesSeverity = selectedSeverities.includes(severity);
-        
-        // 综合所有条件
-        if (matchesSearch && matchesDisclosure && matchesUpdate && matchesPushed && matchesSeverity) {
-          row.style.display = '';
-          visibleCount++;
-        } else {
-          row.style.display = 'none';
-        }
+      // 设置搜索参数
+      const searchTerm = document.getElementById('searchInput').value.trim();
+      if (searchTerm) {
+        params.set('search', searchTerm);
+      } else {
+        params.delete('search');
       }
       
-      // 更新统计信息
-      document.getElementById('displayCount').textContent = '显示 ' + visibleCount + ' 条';
+      // 设置披露日期参数
+      const disclosureStart = document.getElementById('disclosureStart').value;
+      if (disclosureStart) {
+        params.set('disclosure_start', disclosureStart);
+      } else {
+        params.delete('disclosure_start');
+      }
+      
+      const disclosureEnd = document.getElementById('disclosureEnd').value;
+      if (disclosureEnd) {
+        params.set('disclosure_end', disclosureEnd);
+      } else {
+        params.delete('disclosure_end');
+      }
+      
+      // 设置更新日期参数
+      const updateStart = document.getElementById('updateStart').value;
+      if (updateStart) {
+        params.set('update_start', updateStart);
+      } else {
+        params.delete('update_start');
+      }
+      
+      const updateEnd = document.getElementById('updateEnd').value;
+      if (updateEnd) {
+        params.set('update_end', updateEnd);
+      } else {
+        params.delete('update_end');
+      }
+      
+      // 设置推送状态参数
+      const pushedFilter = document.getElementById('pushedFilter').value;
+      if (pushedFilter) {
+        params.set('pushed', pushedFilter);
+      } else {
+        params.delete('pushed');
+      }
+      
+      // 设置严重性参数
+      const severityCheckboxes = document.querySelectorAll('input[name="severity"]:checked');
+      const selectedSeverities = Array.from(severityCheckboxes).map(cb => cb.value);
+      if (selectedSeverities.length > 0) {
+        params.set('severities', selectedSeverities.join(','));
+      } else {
+        params.delete('severities');
+      }
+      
+      return window.location.pathname + '?' + params.toString();
+    }
+    
+    // 页面跳转
+    function changePage(page) {
+      const pageSize = document.getElementById('pageSizeSelect').value || 20;
+      window.location.href = buildURL(page, pageSize);
+    }
+    
+    // 跳转到上一页
+    function changePageToPrevious() {
+      const currentPage = {{.page}};
+      if (currentPage > 1) {
+        changePage(currentPage - 1);
+      }
+    }
+    
+    // 跳转到下一页
+    function changePageToNext() {
+      const currentPage = {{.page}};
+      const totalPages = {{.totalPages}};
+      if (currentPage < totalPages) {
+        changePage(currentPage + 1);
+      }
+    }
+    
+    // 跳转到指定页码
+    function goToPage() {
+      const pageInput = document.getElementById('currentPageInput');
+      let page = parseInt(pageInput.value);
+      if (isNaN(page) || page < 1) {
+        page = 1;
+      }
+      const totalPages = {{.totalPages}};
+      if (page > totalPages) {
+        page = totalPages;
+      }
+      changePage(page);
+    }
+    
+    // 改变每页显示数量
+    function changePageSize() {
+      const pageSize = document.getElementById('pageSizeSelect').value;
+      // 重新从第一页开始
+      window.location.href = buildURL(1, pageSize);
+    }
+    
+    function performSearch() {
+      // 搜索时从第一页开始
+      const pageSize = document.getElementById('pageSizeSelect').value || 20;
+      window.location.href = buildURL(1, pageSize);
     }
     
     function clearFilters() {
@@ -256,8 +357,63 @@
       const severityCheckboxes = document.querySelectorAll('input[name="severity"]');
       severityCheckboxes.forEach(cb => cb.checked = true);
       
-      performSearch();
+      // 清除后从第一页开始
+      const pageSize = document.getElementById('pageSizeSelect').value || 20;
+      window.location.href = buildURL(1, pageSize);
     }
+    
+    // 页面加载时初始化筛选条件
+    window.addEventListener('load', function() {
+      // 从URL参数中恢复筛选条件
+      const params = getURLParams();
+      
+      // 恢复搜索条件
+      const search = params.get('search');
+      if (search) {
+        document.getElementById('searchInput').value = search;
+      }
+      
+      // 恢复披露日期条件
+      const disclosureStart = params.get('disclosure_start');
+      if (disclosureStart) {
+        document.getElementById('disclosureStart').value = disclosureStart;
+      }
+      
+      const disclosureEnd = params.get('disclosure_end');
+      if (disclosureEnd) {
+        document.getElementById('disclosureEnd').value = disclosureEnd;
+      }
+      
+      // 恢复更新日期条件
+      const updateStart = params.get('update_start');
+      if (updateStart) {
+        document.getElementById('updateStart').value = updateStart;
+      }
+      
+      const updateEnd = params.get('update_end');
+      if (updateEnd) {
+        document.getElementById('updateEnd').value = updateEnd;
+      }
+      
+      // 恢复推送状态条件
+      const pushed = params.get('pushed');
+      if (pushed) {
+        document.getElementById('pushedFilter').value = pushed;
+      }
+      
+      // 恢复严重性条件
+      const severities = params.get('severities');
+      if (severities) {
+        const selectedSeverities = severities.split(',');
+        const checkboxes = document.querySelectorAll('input[name="severity"]');
+        checkboxes.forEach(cb => {
+          cb.checked = selectedSeverities.includes(cb.value);
+        });
+      }
+      
+      // 初始化列宽拉拽
+      initColumnResizing();
+    });
     
     // 监听回车键
     document.getElementById('searchInput').addEventListener('keypress', function(e) {
@@ -266,9 +422,8 @@
       }
     });
     
-    // 页面加载时应用筛选和初始化列宽拉拽
+    // 页面加载时初始化列宽拉拽
     window.addEventListener('load', function() {
-      performSearch();
       initColumnResizing();
     });
   </script>

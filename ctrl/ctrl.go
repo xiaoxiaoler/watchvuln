@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -712,16 +713,77 @@ func (w *WatchVulnApp) handleVulnsAPI(rw http.ResponseWriter, r *http.Request) {
 	// 获取严重性筛选参数
 	severities := r.URL.Query().Get("severities")
 
-	vulns, err := w.queryAllVulns(ctx, search, disclosureStart, disclosureEnd, updateStart, updateEnd, pushed, severities)
+	// 获取分页参数，默认page=1，pageSize=20
+	page := 1
+	pageSize := 20
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			pageSize = ps
+		}
+	}
+
+	vulns, err := w.queryAllVulns(ctx, search, disclosureStart, disclosureEnd, updateStart, updateEnd, pushed, severities, page, pageSize)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		_, _ = rw.Write([]byte(err.Error()))
 		return
 	}
+
+	// 查询总数
+	countQuery := w.db.VulnInformation.Query()
+	if search != "" {
+		countQuery = countQuery.Where(
+			vulninformation.Or(
+				vulninformation.TitleContainsFold(search),
+				vulninformation.CveContainsFold(search),
+			),
+		)
+	}
+	if disclosureStart != "" {
+		countQuery = countQuery.Where(vulninformation.DisclosureGTE(disclosureStart))
+	}
+	if disclosureEnd != "" {
+		countQuery = countQuery.Where(vulninformation.DisclosureLTE(disclosureEnd))
+	}
+	if !updateStart.IsZero() {
+		countQuery = countQuery.Where(vulninformation.UpdateTimeGTE(updateStart))
+	}
+	if !updateEnd.IsZero() {
+		countQuery = countQuery.Where(vulninformation.UpdateTimeLTE(updateEnd))
+	}
+	if pushed != nil {
+		countQuery = countQuery.Where(vulninformation.Pushed(*pushed))
+	}
+	if severities != "" {
+		severityList := strings.Split(severities, ",")
+		if len(severityList) > 0 {
+			countQuery = countQuery.Where(vulninformation.SeverityIn(severityList...))
+		}
+	}
+	total, err := countQuery.Count(ctx)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		_, _ = rw.Write([]byte(err.Error()))
+		return
+	}
+
+	// 返回带分页信息的JSON响应
+	response := map[string]interface{}{
+		"vulns":      vulns,
+		"total":      total,
+		"page":       page,
+		"pageSize":   pageSize,
+		"totalPages": (total + pageSize - 1) / pageSize,
+	}
 	rw.Header().Set("Content-Type", "application/json; charset=utf-8")
 	enc := json.NewEncoder(rw)
 	enc.SetIndent("", "  ")
-	_ = enc.Encode(vulns)
+	_ = enc.Encode(response)
 }
 
 func (w *WatchVulnApp) handleIndexPage(rw http.ResponseWriter, r *http.Request) {
@@ -757,18 +819,86 @@ func (w *WatchVulnApp) handleIndexPage(rw http.ResponseWriter, r *http.Request) 
 	// 获取严重性筛选参数
 	severities := r.URL.Query().Get("severities")
 
-	vulns, err := w.queryAllVulns(ctx, search, disclosureStart, disclosureEnd, updateStart, updateEnd, pushed, severities)
+	// 获取分页参数，默认page=1，pageSize=20
+	page := 1
+	pageSize := 20
+	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
+		if p, err := strconv.Atoi(pageStr); err == nil && p > 0 {
+			page = p
+		}
+	}
+	if pageSizeStr := r.URL.Query().Get("pageSize"); pageSizeStr != "" {
+		if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 {
+			pageSize = ps
+		}
+	}
+
+	vulns, err := w.queryAllVulns(ctx, search, disclosureStart, disclosureEnd, updateStart, updateEnd, pushed, severities, page, pageSize)
 	if err != nil {
 		rw.WriteHeader(http.StatusInternalServerError)
 		_, _ = rw.Write([]byte(err.Error()))
 		return
 	}
-	if err := indexTpl.Execute(rw, vulns); err != nil {
+
+	// 查询总数
+	countQuery := w.db.VulnInformation.Query()
+	if search != "" {
+		countQuery = countQuery.Where(
+			vulninformation.Or(
+				vulninformation.TitleContainsFold(search),
+				vulninformation.CveContainsFold(search),
+			),
+		)
+	}
+	if disclosureStart != "" {
+		countQuery = countQuery.Where(vulninformation.DisclosureGTE(disclosureStart))
+	}
+	if disclosureEnd != "" {
+		countQuery = countQuery.Where(vulninformation.DisclosureLTE(disclosureEnd))
+	}
+	if !updateStart.IsZero() {
+		countQuery = countQuery.Where(vulninformation.UpdateTimeGTE(updateStart))
+	}
+	if !updateEnd.IsZero() {
+		countQuery = countQuery.Where(vulninformation.UpdateTimeLTE(updateEnd))
+	}
+	if pushed != nil {
+		countQuery = countQuery.Where(vulninformation.Pushed(*pushed))
+	}
+	if severities != "" {
+		severityList := strings.Split(severities, ",")
+		if len(severityList) > 0 {
+			countQuery = countQuery.Where(vulninformation.SeverityIn(severityList...))
+		}
+	}
+	total, err := countQuery.Count(ctx)
+	if err != nil {
+		rw.WriteHeader(http.StatusInternalServerError)
+		_, _ = rw.Write([]byte(err.Error()))
+		return
+	}
+
+	// 准备模板数据，包含分页信息
+	tplData := map[string]interface{}{
+		"vulns":           vulns,
+		"total":           total,
+		"page":            page,
+		"pageSize":        pageSize,
+		"totalPages":      (total + pageSize - 1) / pageSize,
+		"search":          search,
+		"disclosureStart": disclosureStart,
+		"disclosureEnd":   disclosureEnd,
+		"updateStart":     updateStartStr,
+		"updateEnd":       updateEndStr,
+		"pushed":          pushed,
+		"severities":      severities,
+	}
+	if err := indexTpl.Execute(rw, tplData); err != nil {
 		w.log.Warnf("render index tpl error: %v", err)
 	}
 }
 
-func (w *WatchVulnApp) queryAllVulns(ctx context.Context, search string, disclosureStart, disclosureEnd string, updateStart, updateEnd time.Time, pushed *bool, severities string) ([]*ent.VulnInformation, error) {
+func (w *WatchVulnApp) queryAllVulns(ctx context.Context, search string, disclosureStart, disclosureEnd string, updateStart, updateEnd time.Time, pushed *bool, severities string, page, pageSize int) ([]*ent.VulnInformation, error) {
 	query := w.db.VulnInformation.Query().Order(ent.Desc(vulninformation.FieldDisclosure))
 
 	if search != "" {
@@ -807,6 +937,12 @@ func (w *WatchVulnApp) queryAllVulns(ctx context.Context, search string, disclos
 		if len(severityList) > 0 {
 			query = query.Where(vulninformation.SeverityIn(severityList...))
 		}
+	}
+
+	// 分页
+	if page > 0 && pageSize > 0 {
+		offset := (page - 1) * pageSize
+		query = query.Offset(offset).Limit(pageSize)
 	}
 
 	return query.All(ctx)

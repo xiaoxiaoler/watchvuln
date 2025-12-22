@@ -2,13 +2,14 @@ package ctrl
 
 import (
 	"encoding/json"
-	"entgo.io/ent/dialect"
 	"fmt"
-	"github.com/kataras/golog"
-	"github.com/zema1/watchvuln/push"
 	"net/url"
 	"os"
 	"time"
+
+	"entgo.io/ent/dialect"
+	"github.com/kataras/golog"
+	"github.com/zema1/watchvuln/push"
 )
 
 type WatchVulnAppConfig struct {
@@ -206,7 +207,14 @@ func (c *WatchVulnAppConfig) GetPusher() (push.TextPusher, push.RawPusher, error
 		}
 		golog.Infof("add pusher: %s", pushType)
 	}
+
+	// 如果没有推送器，但配置了HTTP监听，则允许启动
 	if len(textPusher) == 0 && len(rawPusher) == 0 {
+		if c.HTTPListen != "" {
+			golog.Warn("no pusher configured, but HTTP server will be started")
+			// 返回空的推送器，不会执行推送
+			return push.NewMultiTextPusherWithInterval(0), push.NewMultiRawPusherWithInterval(0), nil
+		}
 		msg := `
 you must setup at least one pusher, eg: 
 use dingding: %s --dt DINGDING_ACCESS_TOKEN --ds DINGDING_SECRET

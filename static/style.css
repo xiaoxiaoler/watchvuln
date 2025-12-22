@@ -447,3 +447,121 @@ tr:hover {
     min-width: 200px;
   }
 }
+
+/* 分页样式 */
+.pagination-container {
+  padding: 20px 30px;
+  background: white;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.page-btn {
+  padding: 8px 16px;
+  background: white;
+  color: #334155;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.page-btn:hover:not(:disabled) {
+  border-color: #4facfe;
+  color: #4facfe;
+  background: #f0f9ff;
+}
+
+.page-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  background: #f8fafc;
+}
+
+.page-input-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.page-input-group input {
+  width: 60px;
+  padding: 6px 8px;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 14px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.page-input-group input:focus {
+  outline: none;
+  border-color: #4facfe;
+  box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+}
+
+.page-size-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #64748b;
+}
+
+.page-size-selector select {
+  padding: 6px 8px;
+  border: 2px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  color: #334155;
+  transition: all 0.3s ease;
+}
+
+.page-size-selector select:focus {
+  outline: none;
+  border-color: #4facfe;
+  box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+}
+
+/* 响应式分页 */
+@media (max-width: 768px) {
+  .pagination-container {
+    padding: 15px 20px;
+  }
+  
+  .pagination {
+    gap: 10px;
+  }
+  
+  .page-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+  
+  .page-input-group, .page-size-selector {
+    font-size: 13px;
+    gap: 6px;
+  }
+  
+  .page-input-group input {
+    width: 50px;
+    padding: 5px 6px;
+    font-size: 13px;
+  }
+}
